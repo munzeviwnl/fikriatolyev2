@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fikri Atölye Studio</title>
+<title>Fikri Atölye Studio V2</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#080c15;color:#e9eefb;font-family:Arial,sans-serif}
@@ -12,7 +12,7 @@ header{height:65px;border-bottom:1px solid #273044;display:flex;align-items:cent
 .logo{font-size:20px;font-weight:800}
 .logo span{color:#ff9d36}
 .tag{font-size:12px;color:#94a3b8}
-.layout{display:grid;grid-template-columns:300px 1fr 270px;gap:18px;padding:20px;max-width:1600px;margin:auto}
+.layout{display:grid;grid-template-columns:290px 1fr 260px;gap:18px;padding:20px;max-width:1600px;margin:auto}
 .panel{background:#131b2b;border:1px solid #29354b;border-radius:14px;padding:18px}
 h3{margin:0 0 20px;font-size:15px}
 .field{margin-bottom:19px}
@@ -26,7 +26,7 @@ button:hover{filter:brightness(1.15)}
 .danger{background:#a63745}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .stage{display:flex;flex-direction:column;align-items:center;gap:12px}
-.canvasbox{height:min(70vh,700px);aspect-ratio:9/16;background:#080b14;border:2px solid #303b52;border-radius:12px;overflow:hidden;position:relative}
+.canvasbox{height:min(70vh,700px);aspect-ratio:9/16;background:#080b14;border:2px solid #303b52;border-radius:12px;overflow:hidden}
 canvas{width:100%;height:100%;display:block}
 .status{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 .stat{background:#1a2639;border-radius:8px;padding:10px 14px;font-size:13px}
@@ -43,7 +43,7 @@ canvas{width:100%;height:100%;display:block}
 
 <header>
  <div class="logo">Fikri <span>Atölye</span> Studio</div>
- <div class="tag">SIMULATION ENGINE V1</div>
+ <div class="tag">C-PRESS ENGINE V2</div>
 </header>
 
 <div class="layout">
@@ -52,9 +52,7 @@ canvas{width:100%;height:100%;display:block}
 
   <div class="field">
    <label>Makine <b>C-Press</b></label>
-   <select id="machine">
-    <option>C-Press</option>
-   </select>
+   <select><option>Yuvarlak Hazneli C-Press</option></select>
   </div>
 
   <div class="field">
@@ -119,8 +117,8 @@ canvas{width:100%;height:100%;display:block}
   <div class="field"><label>Hedef İlerleme</label><h2 id="progress">0%</h2></div>
   <div class="field"><label>Çarpışma Sayısı</label><h2 id="collisions">0</h2></div>
   <p class="note">
-   Bu sürüm fizik ve arayüz prototipidir.
-   Yüksek top sayılarında cihaz performansına göre yavaşlama olabilir.
+   Yuvarlak tabanlı hazne, aşağıya kadar inen pres
+   ve top çarpışma sistemi. Bu sürüm fizik prototipidir.
   </p>
   <button class="full" id="snapshot">📷 PNG Görüntü İndir</button>
  </aside>
@@ -135,23 +133,17 @@ const W=540,H=960;
 const $=id=>document.getElementById(id);
 
 const settings={
- initial:1,target:500,pressSpeed:5,speed:1,
- radius:7,colors:"mixed"
+ initial:1,target:500,pressSpeed:5,
+ speed:1,radius:7,colors:"mixed"
 };
 
-let balls=[];
-let running=false;
-let elapsed=0;
-let splitCount=0;
-let collisionCount=0;
-let accumulator=0;
-let lastFrame=0;
-let pressY=185;
-let pressDirection=1;
-let pressVelocity=0;
-let initialized=false;
+const bowl={
+ cx:270,
+ cy:650,
+ radius:180,
+ top:180
+};
 
-const arena={left:65,right:475,top:135,bottom:850};
 const palette={
  mixed:["#36baff","#ffad3d","#e26cff","#48efad","#ff597d"],
  blue:["#40bfff"],
@@ -160,12 +152,27 @@ const palette={
  green:["#4beaab"]
 };
 
+let balls=[];
+let running=false;
+let initialized=false;
+let elapsed=0;
+let splitCount=0;
+let collisionCount=0;
+let accumulator=0;
+let lastFrame=0;
+let pressY=210;
+let pressDirection=1;
+let pressVelocity=0;
+let finished=false;
+
 function updateLabels(){
- ["initial","target","pressSpeed","speed","radius"].forEach(id=>{
-  const key=id==="pressSpeed"?"pressSpeed":id;
-  settings[key]=Number($(id).value);
- });
+ settings.initial=+$("initial").value;
+ settings.target=+$("target").value;
+ settings.pressSpeed=+$("pressSpeed").value;
+ settings.speed=+$("speed").value;
+ settings.radius=+$("radius").value;
  settings.colors=$("colors").value;
+
  $("initialVal").textContent=settings.initial;
  $("targetVal").textContent=settings.target;
  $("pressVal").textContent=settings.pressSpeed;
@@ -177,40 +184,111 @@ document.querySelectorAll("input,select").forEach(el=>{
  el.addEventListener("input",updateLabels);
 });
 
-function makeBall(x,y,r,color){
- return {
-  x,y,r,color,
-  vx:(Math.random()-.5)*65,
-  vy:(Math.random()-.5)*35,
-  cooldown:0
- };
-}
-
 function randomColor(){
  const arr=palette[settings.colors];
  return arr[Math.floor(Math.random()*arr.length)];
 }
 
+function makeBall(x,y,r,color){
+ return {
+  x,y,r,color,
+  vx:(Math.random()-.5)*70,
+  vy:(Math.random()-.5)*30,
+  cooldown:0
+ };
+}
+
+// Haznenin belli yükseklikteki yatay yarı genişliği.
+function halfWidthAt(y){
+ if(y<=bowl.cy)return bowl.radius;
+ const dy=Math.min(bowl.radius,y-bowl.cy);
+ return Math.sqrt(Math.max(0,
+  bowl.radius*bowl.radius-dy*dy));
+}
+
+// Top merkezini haznenin içinde tutar.
+function containBall(b){
+ const R=bowl.radius;
+ const cx=bowl.cx;
+ const cy=bowl.cy;
+
+ if(b.y<=cy){
+  const minX=cx-R+b.r;
+  const maxX=cx+R-b.r;
+
+  if(b.x<minX){
+   b.x=minX;
+   b.vx=Math.abs(b.vx)*.35;
+   collisionCount++;
+  }
+  if(b.x>maxX){
+   b.x=maxX;
+   b.vx=-Math.abs(b.vx)*.35;
+   collisionCount++;
+  }
+ }else{
+  const dx=b.x-cx;
+  const dy=b.y-cy;
+  const dist=Math.hypot(dx,dy);
+  const allowed=R-b.r;
+
+  if(dist>allowed){
+   const nx=dx/Math.max(dist,.0001);
+   const ny=dy/Math.max(dist,.0001);
+
+   b.x=cx+nx*allowed;
+   b.y=cy+ny*allowed;
+
+   const vn=b.vx*nx+b.vy*ny;
+   if(vn>0){
+    b.vx-=1.35*vn*nx;
+    b.vy-=1.35*vn*ny;
+   }
+   collisionCount++;
+  }
+ }
+
+ b.y=Math.max(bowl.top+b.r,b.y);
+}
+
+// Pres alt yüzeyinin yüksekliği.
+function pressBottom(){
+ return pressY+20;
+}
+
+// Presin hazneye uyumlu genişliği.
+function pressHalfWidth(){
+ const y=pressBottom();
+ const margin=7;
+ return Math.max(0,halfWidthAt(y)-margin);
+}
+
 function reset(){
  updateLabels();
  balls=[];
+ running=false;
+ finished=false;
+ initialized=true;
  elapsed=0;
  splitCount=0;
  collisionCount=0;
  accumulator=0;
- pressY=185;
+ pressY=210;
  pressDirection=1;
  pressVelocity=0;
- running=false;
- initialized=true;
 
  for(let i=0;i<settings.initial;i++){
   const r=settings.radius;
-  const cols=Math.max(1,Math.floor(280/(r*2.4)));
-  const x=270+(i%cols-Math.floor(cols/2))*r*2.3;
-  const y=arena.bottom-35-Math.floor(i/cols)*r*2.3;
-  balls.push(makeBall(x,y,r,randomColor()));
+  const cols=Math.max(1,Math.floor(230/(r*2.4)));
+  const col=i%cols;
+  const row=Math.floor(i/cols);
+  const x=bowl.cx+(col-(cols-1)/2)*r*2.3;
+  const y=bowl.cy+90-row*r*2.3;
+  const b=makeBall(x,y,r,randomColor());
+  containBall(b);
+  balls.push(b);
  }
+
  updateStats();
  draw();
 }
@@ -222,17 +300,19 @@ function updateStats(){
  $("collisions").textContent=collisionCount;
  $("time").textContent=elapsed.toFixed(1)+" sn";
  $("progress").textContent=
- Math.min(100,Math.round(balls.length/settings.target*100))+"%";
- $("state").textContent=
- balls.length>=settings.target?"Hedef Tamam":
- running?"Çalışıyor":"Duraklatıldı";
+  Math.min(100,Math.round(
+   balls.length/settings.target*100))+"%";
+ $("state").textContent=finished?"Hedef Tamam":
+  running?"Çalışıyor":"Duraklatıldı";
 }
 
 function movePress(dt){
  const previous=pressY;
- const minY=185;
- const maxY=arena.bottom-110;
- const speed=32+settings.pressSpeed*16;
+ const minY=210;
+
+ // Alt yüzey haznenin en alt noktasına ulaşır.
+ const maxY=bowl.cy+bowl.radius-20;
+ const speed=45+settings.pressSpeed*24;
 
  pressY+=pressDirection*speed*dt;
 
@@ -244,77 +324,45 @@ function movePress(dt){
   pressY=minY;
   pressDirection=1;
  }
+
  pressVelocity=(pressY-previous)/dt;
 }
 
 function splitBall(index){
  if(balls.length>=settings.target)return;
+
  const b=balls[index];
  if(!b||b.cooldown>0)return;
 
- // Çoğalma sırasında yeni topların üst üste
- // oluşmasını azaltmak için iki küçük top üret.
- const nr=Math.max(3,b.r*.79);
- const offset=nr*1.05;
- const left=makeBall(b.x-offset,b.y,nr,b.color);
- const right=makeBall(b.x+offset,b.y,nr,randomColor());
+ // İki yeni top, eski topun yerine geçer.
+ const nr=Math.max(2.5,b.r*.79);
+ const offset=nr*.8;
 
- left.vx=-95;
- right.vx=95;
- left.vy=right.vy=-35;
- left.cooldown=right.cooldown=.7;
+ const left=makeBall(
+  b.x-offset,b.y,nr,b.color);
+ const right=makeBall(
+  b.x+offset,b.y,nr,randomColor());
+
+ left.vx=-80;
+ right.vx=80;
+ left.vy=right.vy=-40;
+ left.cooldown=right.cooldown=.65;
 
  balls[index]=left;
- if(balls.length<settings.target)balls.push(right);
+ containBall(left);
+
+ if(balls.length<settings.target){
+  containBall(right);
+  balls.push(right);
+ }
+
  splitCount++;
 }
 
-function physics(dt){
- elapsed+=dt;
- movePress(dt);
-
- const gravity=550;
- const pressBottom=pressY+22;
- const splitCandidates=[];
-
- for(let i=0;i<balls.length;i++){
-  const b=balls[i];
-  b.cooldown=Math.max(0,b.cooldown-dt);
-
-  b.vy+=gravity*dt;
-  b.vx*=.999;
-  b.vy*=.999;
-
-  b.x+=b.vx*dt;
-  b.y+=b.vy*dt;
-
-  if(b.x-b.r<arena.left){
-   b.x=arena.left+b.r;
-   b.vx=Math.abs(b.vx)*.55;
-  }
-  if(b.x+b.r>arena.right){
-   b.x=arena.right-b.r;
-   b.vx=-Math.abs(b.vx)*.55;
-  }
-  if(b.y+b.r>arena.bottom){
-   b.y=arena.bottom-b.r;
-   b.vy=-Math.abs(b.vy)*.25;
-   b.vx*=.93;
-  }
-
-  // Presin alt yüzeyi
-  if(b.y-b.r<pressBottom){
-   b.y=pressBottom+b.r;
-   b.vy=Math.max(0,pressVelocity)*.65;
-   if(pressVelocity>0&&b.cooldown<=0){
-    splitCandidates.push(i);
-   }
-  }
- }
-
- // Spatial hashing: sadece yakın toplar kontrol edilir.
- const cellSize=Math.max(16,settings.radius*3);
+function collideBalls(){
+ const cellSize=Math.max(14,settings.radius*3);
  const grid=new Map();
+
  const key=(x,y)=>x+","+y;
 
  for(let i=0;i<balls.length;i++){
@@ -322,6 +370,7 @@ function physics(dt){
   const cx=Math.floor(b.x/cellSize);
   const cy=Math.floor(b.y/cellSize);
   const k=key(cx,cy);
+
   if(!grid.has(k))grid.set(k,[]);
   grid.get(k).push(i);
  }
@@ -332,21 +381,29 @@ function physics(dt){
 
  for(const [k,ids] of grid){
   const [cx,cy]=k.split(",").map(Number);
+
   for(const [ox,oy] of offsets){
    const other=grid.get(key(cx+ox,cy+oy));
    if(!other)continue;
+
    for(const i of ids){
     for(const j of other){
      if(i>=j)continue;
-     const a=balls[i],b=balls[j];
-     const dx=b.x-a.x,dy=b.y-a.y;
-     const min=a.r+b.r;
+
+     const a=balls[i];
+     const b=balls[j];
+     const dx=b.x-a.x;
+     const dy=b.y-a.y;
+     const minDist=a.r+b.r;
      const d2=dx*dx+dy*dy;
-     if(d2>=min*min)continue;
+
+     if(d2>=minDist*minDist)continue;
 
      const d=Math.max(.001,Math.sqrt(d2));
-     const nx=dx/d,ny=dy/d;
-     const overlap=min-d;
+     const nx=dx/d;
+     const ny=dy/d;
+     const overlap=minDist-d;
+
      a.x-=nx*overlap*.5;
      a.y-=ny*overlap*.5;
      b.x+=nx*overlap*.5;
@@ -357,45 +414,115 @@ function physics(dt){
      const vn=rvx*nx+rvy*ny;
 
      if(vn<0){
-      const impulse=-(1+.35)*vn*.5;
+      const impulse=-(1+.3)*vn*.5;
       a.vx-=impulse*nx;
       a.vy-=impulse*ny;
       b.vx+=impulse*nx;
       b.vy+=impulse*ny;
      }
+
      collisionCount++;
     }
    }
   }
  }
+}
 
- // Çarpışma sonrası duvar ve pres düzeltmesi
- for(const b of balls){
-  b.x=Math.max(arena.left+b.r,Math.min(arena.right-b.r,b.x));
-  b.y=Math.max(pressBottom+b.r,Math.min(arena.bottom-b.r,b.y));
+function physics(dt){
+ if(finished)return;
+
+ elapsed+=dt;
+ movePress(dt);
+
+ const gravity=650;
+ const bottom=pressBottom();
+ const pressHalf=pressHalfWidth();
+ const candidates=[];
+
+ for(let i=0;i<balls.length;i++){
+  const b=balls[i];
+
+  b.cooldown=Math.max(0,b.cooldown-dt);
+  b.vy+=gravity*dt;
+  b.vx*=.998;
+  b.vy*=.998;
+
+  b.x+=b.vx*dt;
+  b.y+=b.vy*dt;
+
+  containBall(b);
+
+  // Presin altındaki toplara temas.
+  const underPress=
+   Math.abs(b.x-bowl.cx)<=pressHalf+b.r;
+
+  if(underPress&&b.y-b.r<bottom){
+   const wasBelow=b.y>=bottom-b.r;
+
+   if(wasBelow){
+    b.y=bottom+b.r;
+    b.vy=Math.max(0,pressVelocity)*.55;
+    b.vx*=.85;
+
+    if(pressVelocity>0&&b.cooldown<=0){
+     candidates.push(i);
+    }
+   }
+  }
  }
 
- // Ezilme: pres aşağı inerken top tabana yakınsa
- // ve pres ile taban arasındaki boşluk daralmışsa.
- const gap=arena.bottom-pressBottom;
- if(pressVelocity>0&&gap<settings.radius*7){
-  for(const i of splitCandidates){
-   if(balls.length>=settings.target)break;
-   splitBall(i);
+ // Yakın topların birbirine çarpışması.
+ collideBalls();
+
+ // Birkaç düzeltme geçişi.
+ for(let pass=0;pass<2;pass++){
+  for(const b of balls){
+   containBall(b);
+
+   const half=pressHalfWidth();
+   if(Math.abs(b.x-bowl.cx)<=half &&
+      b.y>=pressBottom()-b.r &&
+      b.y<pressBottom()+b.r){
+    b.y=pressBottom()+b.r;
+   }
+   containBall(b);
   }
-  // Alt bölgede sıkışmış toplar da çoğalabilir.
-  for(let i=0;i<balls.length&&balls.length<settings.target;i++){
+ }
+
+ // Pres alt bölgeye indiğinde sıkışma algılama.
+ const remaining=bowl.cy+bowl.radius-bottom;
+
+ if(pressVelocity>0&&remaining<settings.radius*9){
+  let created=0;
+
+  for(const i of candidates){
+   if(balls.length>=settings.target)break;
+   if(created>=8)break;
+
    const b=balls[i];
-   if(b.cooldown<=0&&
-      b.y>arena.bottom-settings.radius*6&&
-      b.y-b.r<=pressBottom+settings.radius*4){
+   if(!b||b.cooldown>0)continue;
+
+   splitBall(i);
+   created++;
+  }
+
+  // Yuvarlak tabandaki sıkışan toplar.
+  for(let i=0;i<balls.length;i++){
+   if(created>=8||balls.length>=settings.target)break;
+
+   const b=balls[i];
+   if(b.cooldown>0)continue;
+
+   if(b.y>bottom &&
+      b.y> bowl.cy+35){
     splitBall(i);
-    if(splitCount%8===0)break;
+    created++;
    }
   }
  }
 
  if(balls.length>=settings.target){
+  finished=true;
   running=false;
  }
 }
@@ -406,6 +533,7 @@ function drawBall(b){
   b.x-r*.35,b.y-r*.4,r*.05,
   b.x,b.y,r*1.15
  );
+
  gradient.addColorStop(0,"#ffffff");
  gradient.addColorStop(.22,b.color);
  gradient.addColorStop(1,"#17233f");
@@ -416,22 +544,39 @@ function drawBall(b){
  ctx.fill();
 }
 
+function bowlPath(){
+ ctx.beginPath();
+ ctx.moveTo(bowl.cx-bowl.radius,bowl.top);
+ ctx.lineTo(bowl.cx-bowl.radius,bowl.cy);
+ ctx.arc(bowl.cx,bowl.cy,bowl.radius,
+  Math.PI,0,true);
+ ctx.lineTo(bowl.cx+bowl.radius,bowl.top);
+}
+
 function draw(){
  ctx.clearRect(0,0,W,H);
+
  const bg=ctx.createLinearGradient(0,0,0,H);
  bg.addColorStop(0,"#101a30");
  bg.addColorStop(1,"#060910");
  ctx.fillStyle=bg;
  ctx.fillRect(0,0,W,H);
 
- // Arka plan çizgileri
  ctx.strokeStyle="#ffffff09";
  ctx.lineWidth=1;
+
  for(let x=0;x<W;x+=30){
-  ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x,0);
+  ctx.lineTo(x,H);
+  ctx.stroke();
  }
+
  for(let y=0;y<H;y+=30){
-  ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0,y);
+  ctx.lineTo(W,y);
+  ctx.stroke();
  }
 
  ctx.textAlign="center";
@@ -440,26 +585,35 @@ function draw(){
  ctx.fillText("FİKRİ ATÖLYE",W/2,65);
  ctx.font="14px Arial";
  ctx.fillStyle="#aabbd5";
- ctx.fillText("C-PRESS SIMULATION",W/2,91);
+ ctx.fillText("C-PRESS ROUND CHAMBER",W/2,91);
 
- // Arena
+ // Yuvarlak tabanlı hazne.
+ ctx.save();
+ bowlPath();
  ctx.fillStyle="#131d2b";
- ctx.fillRect(arena.left,arena.top,
-  arena.right-arena.left,arena.bottom-arena.top);
+ ctx.fill();
 
- ctx.strokeStyle="#64748b";
- ctx.lineWidth=11;
- ctx.beginPath();
- ctx.moveTo(arena.left,arena.top);
- ctx.lineTo(arena.left,arena.bottom);
- ctx.lineTo(arena.right,arena.bottom);
- ctx.lineTo(arena.right,arena.top);
- ctx.stroke();
+ // Haznenin içine hafif parlaklık.
+ const glow=ctx.createLinearGradient(
+  bowl.cx-bowl.radius,0,
+  bowl.cx+bowl.radius,0);
+ glow.addColorStop(0,"#7db9ff13");
+ glow.addColorStop(.5,"#ffffff04");
+ glow.addColorStop(1,"#7db9ff13");
 
- // Toplar
+ ctx.fillStyle=glow;
+ ctx.fill();
+ ctx.restore();
+
+ // Topları haznenin içinde çiz.
+ ctx.save();
+ bowlPath();
+ ctx.clip();
+
  for(const b of balls)drawBall(b);
+ ctx.restore();
 
- // Pres gövdesi
+ // Presin hareketli dikey mili.
  const metal=ctx.createLinearGradient(0,0,W,0);
  metal.addColorStop(0,"#9b521d");
  metal.addColorStop(.2,"#ffbf66");
@@ -468,23 +622,54 @@ function draw(){
  metal.addColorStop(1,"#9b521d");
 
  ctx.fillStyle="#63758f";
- ctx.fillRect(252,arena.top-15,36,pressY-arena.top+15);
+ ctx.fillRect(252,bowl.top-20,36,
+  Math.max(0,pressY-bowl.top+20));
+
+ // Haznenin genişliğine uyumlu pres.
+ const half=pressHalfWidth();
+ const width=half*2;
 
  ctx.fillStyle=metal;
- ctx.fillRect(arena.left+8,pressY,
-  arena.right-arena.left-16,22);
+ ctx.fillRect(bowl.cx-half,pressY,width,20);
 
  ctx.fillStyle="#ffdfab";
- ctx.fillRect(arena.left+8,pressY,
-  arena.right-arena.left-16,4);
+ ctx.fillRect(bowl.cx-half,pressY,width,4);
+
+ // Hazne çerçevesi.
+ bowlPath();
+ ctx.strokeStyle="#64748b";
+ ctx.lineWidth=11;
+ ctx.lineCap="round";
+ ctx.stroke();
+
+ // İç parlak kenar.
+ bowlPath();
+ ctx.strokeStyle="#b4c8e055";
+ ctx.lineWidth=2;
+ ctx.stroke();
 
  ctx.fillStyle="#f2f5ff";
  ctx.font="bold 25px Arial";
- ctx.fillText(balls.length+" / "+settings.target,W/2,905);
+ ctx.fillText(
+  balls.length+" / "+settings.target,
+  W/2,905
+ );
+
+ if(finished){
+  ctx.fillStyle="#06101bdc";
+  ctx.fillRect(60,400,420,120);
+  ctx.fillStyle="#ffb357";
+  ctx.font="bold 28px Arial";
+  ctx.fillText("HEDEF TAMAMLANDI!",270,454);
+  ctx.fillStyle="#ffffff";
+  ctx.font="19px Arial";
+  ctx.fillText(balls.length+" TOP",270,488);
+ }
 }
 
 function frame(now){
  if(!lastFrame)lastFrame=now;
+
  const realDt=Math.min((now-lastFrame)/1000,.05);
  lastFrame=now;
 
@@ -492,21 +677,27 @@ function frame(now){
   accumulator+=realDt*settings.speed;
   const step=1/120;
   let iterations=0;
-  while(accumulator>=step&&iterations<24&&running){
+
+  while(accumulator>=step &&
+        iterations<24 && running){
    physics(step);
    accumulator-=step;
    iterations++;
   }
+
   if(iterations===24)accumulator=0;
   updateStats();
  }
+
  draw();
  requestAnimationFrame(frame);
 }
 
 $("start").onclick=()=>{
  if(!initialized)reset();
+ if(finished)reset();
  running=true;
+ updateStats();
 };
 
 $("pause").onclick=()=>{
@@ -527,7 +718,7 @@ $("step").onclick=()=>{
 $("snapshot").onclick=()=>{
  draw();
  const a=document.createElement("a");
- a.download="fikri-atolye-simulasyon.png";
+ a.download="fikri-atolye-v2.png";
  a.href=canvas.toDataURL("image/png");
  a.click();
 };
