@@ -1,0 +1,540 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fikri Atölye Studio</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080c15;color:#e9eefb;font-family:Arial,sans-serif}
+header{height:65px;border-bottom:1px solid #273044;display:flex;align-items:center;justify-content:space-between;padding:0 25px;background:#111827}
+.logo{font-size:20px;font-weight:800}
+.logo span{color:#ff9d36}
+.tag{font-size:12px;color:#94a3b8}
+.layout{display:grid;grid-template-columns:300px 1fr 270px;gap:18px;padding:20px;max-width:1600px;margin:auto}
+.panel{background:#131b2b;border:1px solid #29354b;border-radius:14px;padding:18px}
+h3{margin:0 0 20px;font-size:15px}
+.field{margin-bottom:19px}
+.field label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:9px;color:#b8c5db}
+.field b{color:#ffae56}
+input[type=range]{width:100%;accent-color:#ff9d36;cursor:pointer}
+select{width:100%;background:#202c40;color:white;padding:11px;border:1px solid #35435b;border-radius:8px}
+button{border:0;border-radius:9px;padding:12px;color:white;background:#344158;font-weight:bold;cursor:pointer}
+button:hover{filter:brightness(1.15)}
+.primary{background:#f58c28;color:#151515}
+.danger{background:#a63745}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stage{display:flex;flex-direction:column;align-items:center;gap:12px}
+.canvasbox{height:min(70vh,700px);aspect-ratio:9/16;background:#080b14;border:2px solid #303b52;border-radius:12px;overflow:hidden;position:relative}
+canvas{width:100%;height:100%;display:block}
+.status{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.stat{background:#1a2639;border-radius:8px;padding:10px 14px;font-size:13px}
+.stat strong{color:#ffae56}
+.note{font-size:12px;color:#9baac1;line-height:1.6}
+.full{width:100%;margin-top:9px}
+@media(max-width:1050px){
+.layout{grid-template-columns:1fr}
+.canvasbox{height:65vh}
+}
+</style>
+</head>
+<body>
+
+<header>
+ <div class="logo">Fikri <span>Atölye</span> Studio</div>
+ <div class="tag">SIMULATION ENGINE V1</div>
+</header>
+
+<div class="layout">
+ <aside class="panel">
+  <h3>⚙️ Simülasyon Ayarları</h3>
+
+  <div class="field">
+   <label>Makine <b>C-Press</b></label>
+   <select id="machine">
+    <option>C-Press</option>
+   </select>
+  </div>
+
+  <div class="field">
+   <label>Başlangıç Topu <b id="initialVal">1</b></label>
+   <input id="initial" type="range" min="1" max="40" value="1">
+  </div>
+
+  <div class="field">
+   <label>Hedef Top <b id="targetVal">500</b></label>
+   <input id="target" type="range" min="50" max="3000" step="50" value="500">
+  </div>
+
+  <div class="field">
+   <label>Pres Hızı <b id="pressVal">5</b></label>
+   <input id="pressSpeed" type="range" min="1" max="10" value="5">
+  </div>
+
+  <div class="field">
+   <label>Simülasyon Hızı <b id="speedVal">1x</b></label>
+   <input id="speed" type="range" min="1" max="10" value="1">
+  </div>
+
+  <div class="field">
+   <label>Top Boyutu <b id="radiusVal">7</b></label>
+   <input id="radius" type="range" min="4" max="12" value="7">
+  </div>
+
+  <div class="field">
+   <label>Top Rengi</label>
+   <select id="colors">
+    <option value="mixed">Karışık Neon</option>
+    <option value="blue">Mavi</option>
+    <option value="orange">Turuncu</option>
+    <option value="purple">Mor</option>
+    <option value="green">Yeşil</option>
+   </select>
+  </div>
+
+  <div class="controls">
+   <button class="primary" id="start">▶ Başlat</button>
+   <button id="pause">⏸ Duraklat</button>
+   <button class="danger" id="reset">↻ Sıfırla</button>
+   <button id="step">⏭ Tek Kare</button>
+  </div>
+ </aside>
+
+ <main class="stage">
+  <div class="canvasbox">
+   <canvas id="sim" width="540" height="960"></canvas>
+  </div>
+  <div class="status">
+   <div class="stat">Top: <strong id="count">0</strong></div>
+   <div class="stat">Süre: <strong id="time">0.0 sn</strong></div>
+   <div class="stat">Durum: <strong id="state">Hazır</strong></div>
+  </div>
+ </main>
+
+ <aside class="panel">
+  <h3>📊 Canlı İstatistikler</h3>
+  <div class="field"><label>Top Sayısı</label><h2 id="bigCount">0</h2></div>
+  <div class="field"><label>Çoğalma Olayı</label><h2 id="splits">0</h2></div>
+  <div class="field"><label>Hedef İlerleme</label><h2 id="progress">0%</h2></div>
+  <div class="field"><label>Çarpışma Sayısı</label><h2 id="collisions">0</h2></div>
+  <p class="note">
+   Bu sürüm fizik ve arayüz prototipidir.
+   Yüksek top sayılarında cihaz performansına göre yavaşlama olabilir.
+  </p>
+  <button class="full" id="snapshot">📷 PNG Görüntü İndir</button>
+ </aside>
+</div>
+
+<script>
+"use strict";
+
+const canvas=document.getElementById("sim");
+const ctx=canvas.getContext("2d");
+const W=540,H=960;
+const $=id=>document.getElementById(id);
+
+const settings={
+ initial:1,target:500,pressSpeed:5,speed:1,
+ radius:7,colors:"mixed"
+};
+
+let balls=[];
+let running=false;
+let elapsed=0;
+let splitCount=0;
+let collisionCount=0;
+let accumulator=0;
+let lastFrame=0;
+let pressY=185;
+let pressDirection=1;
+let pressVelocity=0;
+let initialized=false;
+
+const arena={left:65,right:475,top:135,bottom:850};
+const palette={
+ mixed:["#36baff","#ffad3d","#e26cff","#48efad","#ff597d"],
+ blue:["#40bfff"],
+ orange:["#ffad3d"],
+ purple:["#c878ff"],
+ green:["#4beaab"]
+};
+
+function updateLabels(){
+ ["initial","target","pressSpeed","speed","radius"].forEach(id=>{
+  const key=id==="pressSpeed"?"pressSpeed":id;
+  settings[key]=Number($(id).value);
+ });
+ settings.colors=$("colors").value;
+ $("initialVal").textContent=settings.initial;
+ $("targetVal").textContent=settings.target;
+ $("pressVal").textContent=settings.pressSpeed;
+ $("speedVal").textContent=settings.speed+"x";
+ $("radiusVal").textContent=settings.radius;
+}
+
+document.querySelectorAll("input,select").forEach(el=>{
+ el.addEventListener("input",updateLabels);
+});
+
+function makeBall(x,y,r,color){
+ return {
+  x,y,r,color,
+  vx:(Math.random()-.5)*65,
+  vy:(Math.random()-.5)*35,
+  cooldown:0
+ };
+}
+
+function randomColor(){
+ const arr=palette[settings.colors];
+ return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function reset(){
+ updateLabels();
+ balls=[];
+ elapsed=0;
+ splitCount=0;
+ collisionCount=0;
+ accumulator=0;
+ pressY=185;
+ pressDirection=1;
+ pressVelocity=0;
+ running=false;
+ initialized=true;
+
+ for(let i=0;i<settings.initial;i++){
+  const r=settings.radius;
+  const cols=Math.max(1,Math.floor(280/(r*2.4)));
+  const x=270+(i%cols-Math.floor(cols/2))*r*2.3;
+  const y=arena.bottom-35-Math.floor(i/cols)*r*2.3;
+  balls.push(makeBall(x,y,r,randomColor()));
+ }
+ updateStats();
+ draw();
+}
+
+function updateStats(){
+ $("count").textContent=balls.length;
+ $("bigCount").textContent=balls.length;
+ $("splits").textContent=splitCount;
+ $("collisions").textContent=collisionCount;
+ $("time").textContent=elapsed.toFixed(1)+" sn";
+ $("progress").textContent=
+ Math.min(100,Math.round(balls.length/settings.target*100))+"%";
+ $("state").textContent=
+ balls.length>=settings.target?"Hedef Tamam":
+ running?"Çalışıyor":"Duraklatıldı";
+}
+
+function movePress(dt){
+ const previous=pressY;
+ const minY=185;
+ const maxY=arena.bottom-110;
+ const speed=32+settings.pressSpeed*16;
+
+ pressY+=pressDirection*speed*dt;
+
+ if(pressY>=maxY){
+  pressY=maxY;
+  pressDirection=-1;
+ }
+ if(pressY<=minY){
+  pressY=minY;
+  pressDirection=1;
+ }
+ pressVelocity=(pressY-previous)/dt;
+}
+
+function splitBall(index){
+ if(balls.length>=settings.target)return;
+ const b=balls[index];
+ if(!b||b.cooldown>0)return;
+
+ // Çoğalma sırasında yeni topların üst üste
+ // oluşmasını azaltmak için iki küçük top üret.
+ const nr=Math.max(3,b.r*.79);
+ const offset=nr*1.05;
+ const left=makeBall(b.x-offset,b.y,nr,b.color);
+ const right=makeBall(b.x+offset,b.y,nr,randomColor());
+
+ left.vx=-95;
+ right.vx=95;
+ left.vy=right.vy=-35;
+ left.cooldown=right.cooldown=.7;
+
+ balls[index]=left;
+ if(balls.length<settings.target)balls.push(right);
+ splitCount++;
+}
+
+function physics(dt){
+ elapsed+=dt;
+ movePress(dt);
+
+ const gravity=550;
+ const pressBottom=pressY+22;
+ const splitCandidates=[];
+
+ for(let i=0;i<balls.length;i++){
+  const b=balls[i];
+  b.cooldown=Math.max(0,b.cooldown-dt);
+
+  b.vy+=gravity*dt;
+  b.vx*=.999;
+  b.vy*=.999;
+
+  b.x+=b.vx*dt;
+  b.y+=b.vy*dt;
+
+  if(b.x-b.r<arena.left){
+   b.x=arena.left+b.r;
+   b.vx=Math.abs(b.vx)*.55;
+  }
+  if(b.x+b.r>arena.right){
+   b.x=arena.right-b.r;
+   b.vx=-Math.abs(b.vx)*.55;
+  }
+  if(b.y+b.r>arena.bottom){
+   b.y=arena.bottom-b.r;
+   b.vy=-Math.abs(b.vy)*.25;
+   b.vx*=.93;
+  }
+
+  // Presin alt yüzeyi
+  if(b.y-b.r<pressBottom){
+   b.y=pressBottom+b.r;
+   b.vy=Math.max(0,pressVelocity)*.65;
+   if(pressVelocity>0&&b.cooldown<=0){
+    splitCandidates.push(i);
+   }
+  }
+ }
+
+ // Spatial hashing: sadece yakın toplar kontrol edilir.
+ const cellSize=Math.max(16,settings.radius*3);
+ const grid=new Map();
+ const key=(x,y)=>x+","+y;
+
+ for(let i=0;i<balls.length;i++){
+  const b=balls[i];
+  const cx=Math.floor(b.x/cellSize);
+  const cy=Math.floor(b.y/cellSize);
+  const k=key(cx,cy);
+  if(!grid.has(k))grid.set(k,[]);
+  grid.get(k).push(i);
+ }
+
+ const offsets=[
+  [0,0],[1,0],[0,1],[1,1],[-1,1]
+ ];
+
+ for(const [k,ids] of grid){
+  const [cx,cy]=k.split(",").map(Number);
+  for(const [ox,oy] of offsets){
+   const other=grid.get(key(cx+ox,cy+oy));
+   if(!other)continue;
+   for(const i of ids){
+    for(const j of other){
+     if(i>=j)continue;
+     const a=balls[i],b=balls[j];
+     const dx=b.x-a.x,dy=b.y-a.y;
+     const min=a.r+b.r;
+     const d2=dx*dx+dy*dy;
+     if(d2>=min*min)continue;
+
+     const d=Math.max(.001,Math.sqrt(d2));
+     const nx=dx/d,ny=dy/d;
+     const overlap=min-d;
+     a.x-=nx*overlap*.5;
+     a.y-=ny*overlap*.5;
+     b.x+=nx*overlap*.5;
+     b.y+=ny*overlap*.5;
+
+     const rvx=b.vx-a.vx;
+     const rvy=b.vy-a.vy;
+     const vn=rvx*nx+rvy*ny;
+
+     if(vn<0){
+      const impulse=-(1+.35)*vn*.5;
+      a.vx-=impulse*nx;
+      a.vy-=impulse*ny;
+      b.vx+=impulse*nx;
+      b.vy+=impulse*ny;
+     }
+     collisionCount++;
+    }
+   }
+  }
+ }
+
+ // Çarpışma sonrası duvar ve pres düzeltmesi
+ for(const b of balls){
+  b.x=Math.max(arena.left+b.r,Math.min(arena.right-b.r,b.x));
+  b.y=Math.max(pressBottom+b.r,Math.min(arena.bottom-b.r,b.y));
+ }
+
+ // Ezilme: pres aşağı inerken top tabana yakınsa
+ // ve pres ile taban arasındaki boşluk daralmışsa.
+ const gap=arena.bottom-pressBottom;
+ if(pressVelocity>0&&gap<settings.radius*7){
+  for(const i of splitCandidates){
+   if(balls.length>=settings.target)break;
+   splitBall(i);
+  }
+  // Alt bölgede sıkışmış toplar da çoğalabilir.
+  for(let i=0;i<balls.length&&balls.length<settings.target;i++){
+   const b=balls[i];
+   if(b.cooldown<=0&&
+      b.y>arena.bottom-settings.radius*6&&
+      b.y-b.r<=pressBottom+settings.radius*4){
+    splitBall(i);
+    if(splitCount%8===0)break;
+   }
+  }
+ }
+
+ if(balls.length>=settings.target){
+  running=false;
+ }
+}
+
+function drawBall(b){
+ const r=b.r;
+ const gradient=ctx.createRadialGradient(
+  b.x-r*.35,b.y-r*.4,r*.05,
+  b.x,b.y,r*1.15
+ );
+ gradient.addColorStop(0,"#ffffff");
+ gradient.addColorStop(.22,b.color);
+ gradient.addColorStop(1,"#17233f");
+
+ ctx.fillStyle=gradient;
+ ctx.beginPath();
+ ctx.arc(b.x,b.y,r,0,Math.PI*2);
+ ctx.fill();
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ const bg=ctx.createLinearGradient(0,0,0,H);
+ bg.addColorStop(0,"#101a30");
+ bg.addColorStop(1,"#060910");
+ ctx.fillStyle=bg;
+ ctx.fillRect(0,0,W,H);
+
+ // Arka plan çizgileri
+ ctx.strokeStyle="#ffffff09";
+ ctx.lineWidth=1;
+ for(let x=0;x<W;x+=30){
+  ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+ }
+ for(let y=0;y<H;y+=30){
+  ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+ }
+
+ ctx.textAlign="center";
+ ctx.fillStyle="#f5a14c";
+ ctx.font="bold 23px Arial";
+ ctx.fillText("FİKRİ ATÖLYE",W/2,65);
+ ctx.font="14px Arial";
+ ctx.fillStyle="#aabbd5";
+ ctx.fillText("C-PRESS SIMULATION",W/2,91);
+
+ // Arena
+ ctx.fillStyle="#131d2b";
+ ctx.fillRect(arena.left,arena.top,
+  arena.right-arena.left,arena.bottom-arena.top);
+
+ ctx.strokeStyle="#64748b";
+ ctx.lineWidth=11;
+ ctx.beginPath();
+ ctx.moveTo(arena.left,arena.top);
+ ctx.lineTo(arena.left,arena.bottom);
+ ctx.lineTo(arena.right,arena.bottom);
+ ctx.lineTo(arena.right,arena.top);
+ ctx.stroke();
+
+ // Toplar
+ for(const b of balls)drawBall(b);
+
+ // Pres gövdesi
+ const metal=ctx.createLinearGradient(0,0,W,0);
+ metal.addColorStop(0,"#9b521d");
+ metal.addColorStop(.2,"#ffbf66");
+ metal.addColorStop(.5,"#ed862c");
+ metal.addColorStop(.8,"#ffbd65");
+ metal.addColorStop(1,"#9b521d");
+
+ ctx.fillStyle="#63758f";
+ ctx.fillRect(252,arena.top-15,36,pressY-arena.top+15);
+
+ ctx.fillStyle=metal;
+ ctx.fillRect(arena.left+8,pressY,
+  arena.right-arena.left-16,22);
+
+ ctx.fillStyle="#ffdfab";
+ ctx.fillRect(arena.left+8,pressY,
+  arena.right-arena.left-16,4);
+
+ ctx.fillStyle="#f2f5ff";
+ ctx.font="bold 25px Arial";
+ ctx.fillText(balls.length+" / "+settings.target,W/2,905);
+}
+
+function frame(now){
+ if(!lastFrame)lastFrame=now;
+ const realDt=Math.min((now-lastFrame)/1000,.05);
+ lastFrame=now;
+
+ if(running){
+  accumulator+=realDt*settings.speed;
+  const step=1/120;
+  let iterations=0;
+  while(accumulator>=step&&iterations<24&&running){
+   physics(step);
+   accumulator-=step;
+   iterations++;
+  }
+  if(iterations===24)accumulator=0;
+  updateStats();
+ }
+ draw();
+ requestAnimationFrame(frame);
+}
+
+$("start").onclick=()=>{
+ if(!initialized)reset();
+ running=true;
+};
+
+$("pause").onclick=()=>{
+ running=false;
+ updateStats();
+};
+
+$("reset").onclick=reset;
+
+$("step").onclick=()=>{
+ if(!initialized)reset();
+ running=false;
+ physics(1/120);
+ updateStats();
+ draw();
+};
+
+$("snapshot").onclick=()=>{
+ draw();
+ const a=document.createElement("a");
+ a.download="fikri-atolye-simulasyon.png";
+ a.href=canvas.toDataURL("image/png");
+ a.click();
+};
+
+updateLabels();
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
